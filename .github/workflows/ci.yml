@@ -1,0 +1,84 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    # One job per module: a single job with two `cd`s hides which one broke, and
+    # the whole point of the split is that they fail independently.
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [".", "s3"]
+
+    defaults:
+      run:
+        working-directory: ${{ matrix.module }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          # Not go-version-file: go.mod declares the MINIMUM language version
+          # ("go 1.25"), and setup-go installs exactly that -- 1.25.0, whose
+          # standard library carries vulnerabilities fixed in 1.25.11 and later.
+          # govulncheck below is right to fail on it.
+          #
+          # "stable" is the version people actually run, which is what CI should
+          # be testing against. The minimum in go.mod stays where it is.
+          go-version: stable
+
+      # A formatting difference is a failure, not a comment on a pull request.
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "not gofmt'd:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: vet
+        run: go vet ./...
+
+      # The race detector is what keeps the per-request Collector honest: it is
+      # shared by every goroutine a request fans out to.
+      - name: test
+        run: go test -race ./...
+
+      # No SDK, in either module. The point of writing SigV4 by hand is that the
+      # dependency graph stays at the framework, and a well-meaning import would
+      # undo it without anyone noticing.
+      - name: no cloud SDK reached the graph
+        run: |
+          deps=$(go list -deps ./... | grep -E 'aws-sdk-go|cloud.google.com|azure-sdk' || true)
+          if [ -n "$deps" ]; then
+            echo "an SDK reached this module:"
+            echo "$deps"
+            exit 1
+          fi
+
+      - name: no Node
+        run: |
+          found=$(find . -name package.json -o -name node_modules -o -name 'vite.config.*' | grep -v '^./.git' || true)
+          if [ -n "$found" ]; then
+            echo "Node entered the view layer:"
+            echo "$found"
+            exit 1
+          fi
+
+      # Required by doc 24: a known vulnerability blocks the merge rather than
+      # showing up in a report nobody reads.
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...

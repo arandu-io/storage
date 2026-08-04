@@ -1,0 +1,12 @@
+# What this adapter declares about itself.
+
+name = "arandu-io/storage/s3"
+framework = ">= 0.9"
+profiles = ["conventional", "performance"]
+
+[permissions]
+# It talks to a bucket, which leaves the process.
+network = true
+filesystem = false
+exec = false
+migrations = false

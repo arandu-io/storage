@@ -1,0 +1,13 @@
+# What this adapter declares about itself.
+
+name = "arandu-io/storage"
+framework = ">= 0.9"
+profiles = ["conventional", "performance"]
+
+[permissions]
+# The disk store writes files. The S3 driver is a separate module and declares
+# its own network permission.
+network = false
+filesystem = true
+exec = false
+migrations = false
