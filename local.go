@@ -50,6 +50,14 @@ func NewDisk(root string) (*Disk, error) {
 
 var _ storage.Store = (*Disk)(nil)
 
+// partialPrefix names an upload in flight.
+//
+// It is a prefix rather than a suffix so List can skip it by looking at the
+// base name only, and it starts with a dot so it sorts away from real keys. A
+// key can never begin with it: storage.CleanKey resolves the key, and this
+// prefix is only ever produced here.
+const partialPrefix = ".arandu-partial-"
+
 // Put writes a file under the tenant of the Grant.
 func (d *Disk) Put(ctx context.Context, g security.Grant, key string, body io.Reader, contentType string) error {
 	full, err := d.pathFor(g, key)
@@ -62,9 +70,23 @@ func (d *Disk) Put(ctx context.Context, g security.Grant, key string, body io.Re
 
 	// Written to a temporary name and renamed, so a reader never sees a
 	// half-written file and a crash mid-upload leaves nothing to clean up.
-	tmp := full + ".partial"
-	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	//
+	// The name is unique per call. It used to be the key plus ".partial", which
+	// is the same name for every concurrent upload of the same key: two requests
+	// opened it with O_TRUNC, interleaved their bytes into one file, and both
+	// renamed it into place. The stored object was neither upload. Two people
+	// replacing the same attachment is not a rare race -- it is a retry. Found
+	// by audit.
+	f, err := os.CreateTemp(filepath.Dir(full), partialPrefix+"*")
 	if err != nil {
+		return fmt.Errorf("storage: writing %s: %w", key, err)
+	}
+	tmp := f.Name()
+	// Nobody reads a partial file, but CreateTemp makes it 0600 and the stored
+	// object is 0644 like every other.
+	if err := f.Chmod(0o644); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmp)
 		return fmt.Errorf("storage: writing %s: %w", key, err)
 	}
 
@@ -159,11 +181,16 @@ func (d *Disk) Exists(ctx context.Context, g security.Grant, key string) (bool, 
 // way in: a caller that saw it could start passing it, and then the prefix would
 // be something a caller controls.
 func (d *Disk) List(ctx context.Context, g security.Grant, prefix string) ([]string, error) {
-	base, err := storage.Path(g, ".keep")
+	// The tenant directory is resolved through the same check every other
+	// operation goes through, rather than joined by hand. Joining by hand was
+	// the one path into this package that never verified the result stayed
+	// under the root -- so List was the operation that would have walked out of
+	// it. Found by audit.
+	tenantRoot, err := d.pathFor(g, ".keep")
 	if err != nil {
 		return nil, err
 	}
-	tenantRoot := filepath.Join(d.root, filepath.Dir(base))
+	tenantRoot = filepath.Dir(tenantRoot)
 
 	var out []string
 	err = filepath.WalkDir(tenantRoot, func(path string, entry fs.DirEntry, err error) error {
@@ -175,7 +202,10 @@ func (d *Disk) List(ctx context.Context, g security.Grant, prefix string) ([]str
 			}
 			return err
 		}
-		if entry.IsDir() || strings.HasSuffix(path, ".partial") {
+		// An upload in flight is not a stored object yet, and the name is
+		// matched on the base rather than the whole path: a directory named
+		// after the prefix would otherwise hide everything under it.
+		if entry.IsDir() || strings.HasPrefix(entry.Name(), partialPrefix) {
 			return nil
 		}
 

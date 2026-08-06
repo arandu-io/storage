@@ -1,12 +1,14 @@
 package storage_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/arandu-io/framework/security"
@@ -230,3 +232,80 @@ func TestTheRootIsCreated(t *testing.T) {
 type failingReader struct{}
 
 func (failingReader) Read([]byte) (int, error) { return 0, errors.New("the connection dropped") }
+
+// TestConcurrentUploadsOfTheSameKeyDoNotMix is a bug an audit found.
+//
+// Every upload wrote to the key plus ".partial", which is the same file for
+// every concurrent upload of the same key. Two of them opened it with O_TRUNC,
+// interleaved their bytes, and both renamed the result into place -- so the
+// stored object was neither upload. Two people replacing the same attachment is
+// not a rare race; it is what a retry looks like.
+//
+// The bodies here are distinguishable by content, so a mixed file fails the
+// check rather than passing by luck.
+func TestConcurrentUploadsOfTheSameKeyDoNotMix(t *testing.T) {
+	d := disk(t)
+	g := grant(tenantA)
+	ctx := context.Background()
+
+	const writers = 8
+	const size = 64 * 1024 // big enough that one io.Copy is several writes
+
+	bodies := make([][]byte, writers)
+	for i := range bodies {
+		bodies[i] = bytes.Repeat([]byte{byte('a' + i)}, size)
+	}
+
+	var wg sync.WaitGroup
+	for i := range writers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := d.Put(ctx, g, "invoice.pdf", bytes.NewReader(bodies[i]), "application/pdf"); err != nil {
+				t.Errorf("Put %d: %v", i, err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	f, err := d.Get(ctx, g, "invoice.pdf")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	defer func() { _ = f.Body.Close() }()
+
+	got, err := io.ReadAll(f.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != size {
+		t.Fatalf("the stored file is %d bytes, want %d -- two uploads were written into one", len(got), size)
+	}
+	for _, want := range bodies {
+		if bytes.Equal(got, want) {
+			return
+		}
+	}
+	t.Fatalf("the stored file matches no upload: it starts with %q and ends with %q",
+		got[:8], got[len(got)-8:])
+}
+
+// TestAnUploadInFlightIsNotListed: a partial file is not a stored object, and a
+// caller listing keys during an upload must not see one.
+func TestAnUploadInFlightIsNotListed(t *testing.T) {
+	d := disk(t)
+	g := grant(tenantA)
+	ctx := context.Background()
+
+	if err := d.Put(ctx, g, "reports/q1.pdf", strings.NewReader("done"), "application/pdf"); err != nil {
+		t.Fatal(err)
+	}
+
+	keys, err := d.List(ctx, g, "")
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(keys) != 1 || keys[0] != "reports/q1.pdf" {
+		t.Fatalf("List = %v, want exactly the stored key", keys)
+	}
+}
