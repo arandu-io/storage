@@ -1,6 +1,6 @@
 module github.com/arandu-io/storage/s3
 
-go 1.25
+go 1.25.0
 
 // No SDK, and its own module anyway: a project storing on local disk should not
 // carry the S3 protocol implementation, and a project on R2 should not carry a
@@ -14,5 +14,5 @@ require github.com/arandu-io/framework v0.10.0
 
 require (
 	golang.org/x/crypto v0.31.0 // indirect
-	golang.org/x/sys v0.28.0 // indirect
+	golang.org/x/sys v0.46.0 // indirect
 )
