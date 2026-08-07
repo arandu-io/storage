@@ -8,7 +8,7 @@ go 1.25
 // Object storage is github.com/arandu-io/storage/s3, its own module, because in
 // Go there is no optional dependency: carrying the AWS SDK here would put it in
 // the go.sum of every project that only wanted a directory.
-require github.com/arandu-io/framework v0.13.1
+require github.com/arandu-io/framework v0.13.2
 
 require (
 	golang.org/x/crypto v0.31.0 // indirect
