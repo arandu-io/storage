@@ -10,7 +10,7 @@ go 1.25.0
 // AWS SDK that brings a hundred modules, its own credential chain, its own retry
 // policy and its own context rules -- and the algorithm has not changed since
 // 2012, while the SDK's surface changes every quarter.
-require github.com/arandu-io/framework v0.10.0
+require github.com/arandu-io/framework v0.13.1
 
 require (
 	golang.org/x/crypto v0.31.0 // indirect
