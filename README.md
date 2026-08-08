@@ -1,59 +1,55 @@
-# storage
+<h1 align="center">arandu-io/storage</h1>
 
-File storage for [Arandu](https://github.com/arandu-io/framework): local disk,
-and object storage over the S3 protocol.
+<p align="center">The file storage adapter for Arandu.</p>
 
-The contract lives in the core, in `framework/storage`. Every method takes a
-`Grant`, and the path is prefixed by its tenant — a file is customer data, and
-a path without a tenant is a leak with a directory name.
+<p align="center">
+<a href="https://github.com/arandu-io/storage/actions/workflows/ci.yml"><img src="https://github.com/arandu-io/storage/actions/workflows/ci.yml/badge.svg" alt="Build Status"></a>
+<a href="https://pkg.go.dev/github.com/arandu-io/storage"><img src="https://pkg.go.dev/badge/github.com/arandu-io/storage.svg" alt="Go Reference"></a>
+<a href="https://github.com/arandu-io/storage/tags"><img src="https://img.shields.io/github/v/tag/arandu-io/storage?label=version" alt="Latest Version"></a>
+<a href="LICENSE.md"><img src="https://img.shields.io/github/license/arandu-io/storage" alt="License"></a>
+</p>
 
-```sh
-go get github.com/arandu-io/storage        # local disk
-go get github.com/arandu-io/storage/s3     # object storage
-```
+## About the storage adapter
 
-## Cloudflare R2 is the default
-
-```go
-files, err := s3.R2(s3.R2Config{
-    AccountID: cfg.R2AccountID,
-    Bucket:    "uploads",
-    AccessKey: cfg.R2AccessKey,
-    SecretKey: cfg.R2SecretKey,
-})
-```
-
-R2 charges **no egress**. For a SaaS that serves files back to the people who
-uploaded them, egress is most of the bill on every other provider — and it is
-the line that grows with success.
-
-The package is named for the protocol, not the vendor, like `kv` is named for
-RESP and not for Redis. The same implementation covers R2, Amazon S3,
-DigitalOcean Spaces, Backblaze B2 and MinIO:
+A local disk driver in the core, and S3-compatible object storage in its own
+module, because Go has no optional dependency and the AWS SDK is not small.
 
 ```go
-files, err := s3.New(s3.Config{
-    Endpoint: "https://s3.amazonaws.com", Bucket: "uploads",
-    Region: "us-east-1", AccessKey: …, SecretKey: …,
-})
+import _ "github.com/arandu-io/storage/s3"
 ```
 
-Local disk, for development and for a single machine:
+Every path is prefixed by the tenant, taken from the `Grant`. A tenant cannot
+name a path that reaches another tenant's namespace — the identifier is validated
+against a closed pattern for exactly that reason.
 
-```go
-files, err := storage.NewDisk("storage/files")
-```
+Cloudflare R2 before AWS S3: same API, and the suggested default starts there.
 
-## What it is not
+## Learning Arandu
 
-**There is no SDK.** The S3 protocol is HTTP with a signature, and SigV4 is two
-hundred lines — against an AWS SDK that brings a hundred modules, its own
-credential chain, its own retry policy and its own context rules. The algorithm
-has not changed since 2012; the SDK's surface changes every quarter.
+The API reference is generated from the doc comments and lives on
+[pkg.go.dev](https://pkg.go.dev/github.com/arandu-io/framework). Every exported
+symbol carries one, and that is deliberate: it is the documentation that cannot
+drift from the code, because it sits in the same file.
 
-**There is no `storage:link`.** Laravel symlinks a directory into the public
-root, which makes every stored file readable by URL and turns authorization
-into hoping nobody guesses the name. Here a file is served by a route, and the
-route runs a Policy like any other.
+The CLI documents itself — `aru help` lists every command, and each one explains
+what it writes and what to do with it. `aru doctor` explains what it found and
+what breaks, not which rule was violated.
 
-MIT. See [LICENSE.md](LICENSE.md).
+A guide and a website do not exist yet, and that is a decision rather than a
+gap: a guide written against an API that still moves is work done twice, and the
+second time is worse — there is wrong documentation published. The site is the
+next phase, and it will be an Arandu application.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Before opening a pull request, the three
+commands at the top of that file have to pass, and CI runs exactly them.
+
+## Security Vulnerabilities
+
+Please review [our security policy](SECURITY.md) on how to report a
+vulnerability. Never open a public issue for one.
+
+## License
+
+Open-sourced software licensed under the [MIT license](LICENSE.md).
