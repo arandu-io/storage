@@ -1,6 +1,6 @@
 <h1 align="center">arandu-io/storage</h1>
 
-<p align="center">The file storage adapter for Arandu.</p>
+<p align="center">File storage for Arandu.</p>
 
 <p align="center">
 <a href="https://github.com/arandu-io/storage/actions/workflows/ci.yml"><img src="https://github.com/arandu-io/storage/actions/workflows/ci.yml/badge.svg" alt="Build Status"></a>
@@ -8,6 +8,7 @@
 <a href="https://github.com/arandu-io/storage/tags"><img src="https://img.shields.io/github/v/tag/arandu-io/storage?label=version" alt="Latest Version"></a>
 <a href="LICENSE.md"><img src="https://img.shields.io/github/license/arandu-io/storage" alt="License"></a>
 </p>
+
 
 ## About the storage adapter
 
@@ -19,7 +20,7 @@ import _ "github.com/arandu-io/storage/s3"
 ```
 
 Every path is prefixed by the tenant, taken from the `Grant`. A tenant cannot
-name a path that reaches another tenant's namespace — the identifier is validated
+name a path that reaches another tenant's namespace — the identifier is checked
 against a closed pattern for exactly that reason.
 
 Cloudflare R2 before AWS S3: same API, and the suggested default starts there.
@@ -31,7 +32,7 @@ The API reference is generated from the doc comments and lives on
 symbol carries one, and that is deliberate: it is the documentation that cannot
 drift from the code, because it sits in the same file.
 
-The CLI documents itself — `aru help` lists every command, and each one explains
+The CLI documents itself. `aru help` lists every command, and each one explains
 what it writes and what to do with it. `aru doctor` explains what it found and
 what breaks, not which rule was violated.
 
